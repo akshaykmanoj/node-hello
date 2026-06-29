@@ -1,0 +1,100 @@
+name: CI/CD Workflow - Next Opsfolio
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: www-opsfolio-com
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        ref: zitadel-upgrade
+        clean: true
+        
+    - name: Execute variables
+      env:
+          PUBLIC_NOVU_API_URL: ${{ vars.PUBLIC_NOVU_API_URL }}
+          PUBLIC_NOVU_API_KEY: ${{ vars.PUBLIC_NOVU_API_KEY }}
+          PUBLIC_NOVU_CONTACTUS_TEMPLATE: ${{ vars.PUBLIC_NOVU_CONTACTUS_TEMPLATE }}
+          PUBLIC_NOVU_CNT_ACKNOWLEDGEMENT_TEMPLATE: ${{ vars.PUBLIC_NOVU_CNT_ACKNOWLEDGEMENT_TEMPLATE }}
+          PUBLIC_NOVU_SUBSCRIBER_ID: ${{ vars.PUBLIC_NOVU_SUBSCRIBER_ID }}
+          PUBLIC_NOVU_CONTACT_ADMIN_MAIL: ${{ vars.PUBLIC_NOVU_CONTACT_ADMIN_MAIL }}
+          PUBLIC_CRM_CLIENT_ID: ${{ vars.PUBLIC_CRM_CLIENT_ID }}
+          PUBLIC_CRM_LIENT_SECRET_ID: ${{ vars.PUBLIC_CRM_LIENT_SECRET_ID }}
+          PUBLIC_GOOGLE_CAPTCHE_SITE_KEY: ${{ vars.PUBLIC_GOOGLE_CAPTCHE_SITE_KEY }}
+          PUBLIC_GOOGLE_CAPTCHE_SECRET_KEY: ${{ vars.PUBLIC_GOOGLE_CAPTCHE_SECRET_KEY }}
+          PUBLIC_ZITADEL_CLIENT_ID: ${{ vars.PUBLIC_ZITADEL_CLIENT_ID }}
+          PUBLIC_ZITADEL_AUTHORITY: ${{ vars.NEXT_PUBLIC_ZITADEL_AUTHORITY }}
+          PUBLIC_ZITADEL_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_ZITADEL_REDIRECT_URI }}
+          PUBLIC_ZITADEL_LOGOUT_REDIRECT_URI: ${{ vars.NEXT_PUBLIC_ZITADEL_LOGOUT_REDIRECT_URI }}
+          PUBLIC_ZITADEL_ORGANIZATION_ID: ${{ vars.PUBLIC_ZITADEL_ORGANIZATION_ID }}
+          PUBLIC_ZITADEL_PROJECT_ID: ${{ vars.PUBLIC_ZITADEL_PROJECT_ID }}
+          PUBLIC_ZITADEL_API_TOKEN: ${{ vars.PUBLIC_ZITADEL_API_TOKEN }}
+          PUBLIC_QUALITYFOLIO_URL: ${{ vars.PUBLIC_QUALITYFOLIO_URL }}
+          ENABLE_QUALITYFOLIO_PREPARE: ${{ vars.ENABLE_QUALITYFOLIO_PREPARE }}
+          PUBLIC_QUALITYFOLIO_DB: ${{ vars.PUBLIC_QUALITYFOLIO_DB }}
+          PUBLIC_SITE_URL: ${{ vars.NEXT_PUBLIC_SITE_URL }}
+          PUBLIC_ENABLE_OPEN_OBSERVE: ${{ vars.PUBLIC_ENABLE_OPEN_OBSERVE }}
+          PUBLIC_ADMIN_EMAIL: ${{ vars.NEXT_PUBLIC_ADMIN_EMAIL }}
+          PUBLIC_OPENOBSERVE_URL: ${{ vars.PUBLIC_OPENOBSERVE_URL }}
+          PUBLIC_OPENOBSERVE_TOKEN: ${{ vars.PUBLIC_OPENOBSERVE_TOKEN }}
+          PUBLIC_ADMIN_CMMC_EMAIL: ${{ vars.PUBLIC_ADMIN_CMMC_EMAIL }}
+          PUBLIC_TOUCH_POINT_CMMC_SELFASSESSMENT_EMAIL: ${{ vars.PUBLIC_TOUCH_POINT_CMMC_SELFASSESSMENT_EMAIL }}
+          PUBLIC_ADMIN_CMMC_COMPANY_INFO_EMAIL: ${{ vars.PUBLIC_ADMIN_CMMC_COMPANY_INFO_EMAIL }}
+          PUBLIC_OPSFOLIO_ORGANIZATIONS: ${{ vars.PUBLIC_OPSFOLIO_ORGANIZATIONS }}
+          PUBLIC_TOUCH_POINT_POLICY_GENERATOR_EMAIL: ${{ vars.PUBLIC_TOUCH_POINT_POLICY_GENERATOR_EMAIL }}
+          PUBLIC_CMMCDB_PATH: ${{ vars.PUBLIC_CMMCDB_PATH }}
+          PUBLIC_RECAPTCHA_SITE_KEY: ${{ vars.PUBLIC_RECAPTCHA_SITE_KEY }}
+          RECAPTCHA_SECRET_KEY: ${{ vars.RECAPTCHA_SECRET_KEY }}
+          PUBLIC_OTLP_TRACES_URL: ${{ vars.PUBLIC_OTLP_TRACES_URL }}
+          PUBLIC_OTLP_TOKEN: ${{ vars.PUBLIC_OTLP_TOKEN }}
+          PUBLIC_MALYSZEK_ORGANIZATION_ID: ${{ vars.PUBLIC_MALYSZEK_ORGANIZATION_ID }}
+          PUBLIC_CHAT_WIDGET_URL: ${{ vars.PUBLIC_CHAT_WIDGET_URL }}
+          PUBLIC_NOVU_SIBGNUP_TEMPLATE: ${{ vars.PUBLIC_NOVU_SIBGNUP_TEMPLATE }}
+          PUBLIC_NOVU_SUSCRIBER_ID: ${{ vars.PUBLIC_NOVU_SUSCRIBER_ID }}
+          ENABLE_OPEN_OBSERVE: ${{ vars.ENABLE_OPEN_OBSERVE }}
+          PUBLIC_ENABLE_RECAPTCHA: ${{ vars.PUBLIC_ENABLE_RECAPTCHA }}
+          
+      run: |
+          bash -x support/next-ci-cd-prod.sh
+
+    - name: Node and npm versions
+      run: |
+          node --version
+          pnpm --version
+
+    - name: Install sqlite3 from prebuilt binaries
+      run: |
+          pnpm rebuild sqlite3
+
+    - name: Install dependencies
+      run: |
+        pnpm install
+
+    - name: Build using pnpm
+      run: |
+        pnpm run build
+
+    - name: Generate qualityfolio DB
+      run: |
+        pnpm run prepare-qualityfolio-db
+
+    - name: Archive build artifacts
+      run: |
+        tar -czvf next-opsfolio-com_dist.tar.gz dist support/services/qualityfolio/sqlpage/sqlpage.json support/services/qualityfolio/resource-surveillance.sqlite.db support/services/qualityfolio/dev-src.auto node_modules
+
+    - name: Copy build artifacts to the production server
+      run: |
+        scp -P22 -o StrictHostKeyChecking=no next-opsfolio-com_dist.tar.gz "${{ secrets.PRODUCTION_DEPLOYMENT_USER }}@${{ secrets.PRODUCTION_DEPLOYMENT_SERVER_IP }}:"
+        echo "[INFO] File transferred successfully"
+
+    - name: Wait for transfer to complete
+      run: |
+        echo "[INFO] Waiting for 5 minutes to ensure file transfer is complete"
+        sleep 300
+
+    - name: Deploy to production server
+      run: |
+        ssh -p22 -o StrictHostKeyChecking=no -t ${{ secrets.PRODUCTION_DEPLOYMENT_USER }}@${{ secrets.PRODUCTION_DEPLOYMENT_SERVER_IP }} "bash -i next-opsfolio-com.sh"
